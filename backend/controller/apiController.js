@@ -20,7 +20,7 @@ export const registerApi = async (req, res, next) => {
 
         const result = await pool.query(
             `INSERT INTO monitored_endpoints
-            (name, url, interval_sec, timeout_ms, is_active)
+            (name, url, interval_seconds, timeout_ms, is_active)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *`,
             [name, url, interval_sec, timeout_ms, is_active]

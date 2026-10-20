@@ -1,7 +1,7 @@
 import express from 'express'
 import pool from "./db/db.js"
 import apiRoutes from './routes/apiRoutes.js';
-
+import { getCheckHistory } from "../controller/monitorController.js";
 const app= express();
 app.use(express.json());
 
