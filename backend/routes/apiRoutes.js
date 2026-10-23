@@ -8,15 +8,23 @@ import {
     updateApi,
     deleteApi
 } from '../controller/apiController.js';
-import { runManualCheck } from "../controller/monitorController.js";
+import {
+    runManualCheck,
+    getCheckHistory,
+    getApiStats
+} from "../controller/monitorController.js";
 
 const router = express.Router();
 
 router.post('/', registerApi);
 router.get('/', getAllApis);
-router.get('/:id', getApiById);
+
 router.put('/:id', updateApi);
 router.delete('/:id', deleteApi);
 router.post('/:id/check', runManualCheck);
+router.get('/:id/history', getCheckHistory);
+router.get("/:id/stats", getApiStats);
+router.get('/:id', getApiById);
+
 
 export default router;

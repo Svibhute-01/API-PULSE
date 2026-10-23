@@ -1,7 +1,8 @@
 import express from 'express'
 import pool from "./db/db.js"
 import apiRoutes from './routes/apiRoutes.js';
-import { getCheckHistory } from "../controller/monitorController.js";
+import { startMonitoringScheduler }
+    from "./scheduler/monitorScheduler.js";
 const app= express();
 app.use(express.json());
 
@@ -27,7 +28,7 @@ app.get("/health", async(req, res)=>{
 
 app.use('/api/apis', apiRoutes);
 
-
+startMonitoringScheduler();
 app.listen(3000,()=>{
     console.log("App is listening at http://localhost:3000")
 })
