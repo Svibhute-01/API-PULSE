@@ -3,6 +3,8 @@ import pool from "./db/db.js"
 import apiRoutes from './routes/apiRoutes.js';
 import { startMonitoringScheduler }
     from "./scheduler/monitorScheduler.js";
+
+import { connectRedis } from "./db/redis.js";
 const app= express();
 app.use(express.json());
 
@@ -41,7 +43,7 @@ app.get("/test-timeout", async (req, res) => {
 
 
 app.use('/api/apis', apiRoutes);
-
+await connectRedis();
 startMonitoringScheduler();
 app.listen(3000,()=>{
     console.log("App is listening at http://localhost:3000")
