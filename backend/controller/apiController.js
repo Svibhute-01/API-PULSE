@@ -211,14 +211,19 @@ export const updateApi = async (req, res, next) => {
 
 
 // 4. DELETE API
+
 export const deleteApi = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        if (!/^[1-9]\d*$/.test(id)) {
+        // Validate UUID format
+        const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+        if (!uuidRegex.test(id)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid API ID'
+                message: "Invalid API ID"
             });
         }
 
@@ -232,19 +237,17 @@ export const deleteApi = async (req, res, next) => {
         if (result.rows.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Monitored API not found'
+                message: "Monitored API not found"
             });
         }
 
         return res.status(200).json({
             success: true,
-            message: 'API deleted successfully',
+            message: "API deleted successfully",
             data: result.rows[0]
         });
     } catch (error) {
         next(error);
     }
 };
-
-
 

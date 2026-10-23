@@ -54,7 +54,18 @@ export async function runManualCheck(req, res) {
 
 export async function getCheckHistory(req, res) {
     try {
-        const { id } = req.params;
+            const { id } = req.params;
+
+            const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+            if (!uuidRegex.test(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid endpoint ID format"
+            });
+        }
+        
 
         const result = await pool.query(
             `SELECT *
@@ -99,7 +110,7 @@ export async function getApiStats(req, res) {
 
         // Verify that the monitored API exists
         const endpoint = await pool.query(
-            `SELECT id
+            `SELECT id, url, method, timeout_ms
              FROM monitored_endpoints
              WHERE id = $1`,
             [id]

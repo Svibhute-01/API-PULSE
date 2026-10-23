@@ -3,67 +3,85 @@ import pool from "../db/db.js";
 import { performance } from "node:perf_hooks";
 
 export async function checkEndpoint(endpoint) {
-  const { id, url, timeout_ms = 5000 } = endpoint;
+    const { id, url } = endpoint;
 
-  let statusCode = null;
-  let latencyMs = null;
-  let isSuccess = false;
-  let errorMessage = null;
+    const method = endpoint.method || "GET";
+    const timeoutMs =
+        Number(endpoint.timeout_ms) > 0
+            ? Number(endpoint.timeout_ms)
+            : 5000;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    timeout_ms
-  );
+    let statusCode = null;
+    let latencyMs = null;
+    let isSuccess = false;
+    let errorType = null;
 
-  const startTime = performance.now();
+    const controller = new AbortController();
 
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-    });
+    const timeout = setTimeout(() => {
+        controller.abort();
+    }, timeoutMs);
 
-    latencyMs = Math.round(performance.now() - startTime);
-    statusCode = response.status;
-    isSuccess = response.ok;
+    const startTime = performance.now();
 
-    if (!response.ok) {
-      errorMessage = `HTTP error: ${response.status}`;
+    try {
+        const response = await fetch(url, {
+            method,
+            signal: controller.signal,
+        });
+
+        latencyMs = Math.round(
+            performance.now() - startTime
+        );
+
+        statusCode = response.status;
+        isSuccess = response.ok;
+
+        if (!response.ok) {
+            errorType = `HTTP_ERROR_${response.status}`;
+        }
+
+        // Release the response body safely.
+        if (response.body) {
+            await response.body.cancel().catch(() => {});
+        }
+
+    } catch (error) {
+        latencyMs = Math.round(
+            performance.now() - startTime
+        );
+
+        if (error.name === "AbortError") {
+            errorType = "TIMEOUT";
+        } else {
+            errorType = "NETWORK_ERROR";
+        }
+
+    } finally {
+        clearTimeout(timeout);
     }
 
-    // Release the response body without downloading it all.
-    await response.body?.cancel();
-  } catch (error) {
-    latencyMs = Math.round(performance.now() - startTime);
+    const query = `
+        INSERT INTO check_results (
+            endpoint_id,
+            status_code,
+            response_time_ms,
+            is_success,
+            error_type
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+    `;
 
-    errorMessage =
-      error.name === "AbortError"
-        ? `Request timed out after ${timeout_ms} ms`
-        : error.message;
-  } finally {
-    clearTimeout(timeout);
-  }
-const query = `
-    INSERT INTO check_results (
-        endpoint_id,
-        status_code,
-        response_time_ms,
-        is_success,
-        error_type
-    )
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING *
-`;
-  const values = [
-    id,
-    statusCode,
-    latencyMs,
-    isSuccess,
-    errorMessage,
-  ];
+    const values = [
+        id,
+        statusCode,
+        latencyMs,
+        isSuccess,
+        errorType,
+    ];
 
-  const result = await pool.query(query, values);
+    const result = await pool.query(query, values);
 
-  return result.rows[0];
+    return result.rows[0];
 }

@@ -24,6 +24,20 @@ app.get("/health", async(req, res)=>{
     }
 })
 
+app.get("/test-500", (req, res) => {
+    res.status(500).json({
+        message: "Simulated internal server error"
+    });
+});
+
+app.get("/test-timeout", async (req, res) => {
+    await new Promise(resolve => setTimeout(resolve, 8000));
+
+    res.status(200).json({
+        message: "Response returned after 8 seconds"
+    });
+});
+
 
 
 app.use('/api/apis', apiRoutes);
