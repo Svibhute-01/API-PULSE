@@ -1,12 +1,28 @@
 
 import pool from '../db/db.js';
 
+const UUID_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+
+function isValidHttpUrl(value) {
+    if (typeof value !== 'string') return false;
+    try {
+        const parsed = new URL(value);
+        return ['http:', 'https:'].includes(parsed.protocol);
+    } catch {
+        return false;
+    }
+}
+
 
 export const registerApi = async (req, res, next) => {
     try {
         const {
             name,
             url,
+            method = 'GET',
             interval_sec = 60,
             timeout_ms = 5000,
             is_active = true
@@ -19,12 +35,57 @@ export const registerApi = async (req, res, next) => {
             });
         }
 
+        if (typeof name !== 'string' || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name must be a non-empty string'
+            });
+        }
+
+        if (!isValidHttpUrl(url)) {
+            return res.status(400).json({
+                success: false,
+                message: 'A valid HTTP or HTTPS URL is required'
+            });
+        }
+
+        const normalizedMethod =
+            typeof method === 'string' ? method.toUpperCase() : '';
+
+        if (!ALLOWED_METHODS.includes(normalizedMethod)) {
+            return res.status(400).json({
+                success: false,
+                message: `method must be one of: ${ALLOWED_METHODS.join(', ')}`
+            });
+        }
+
+        if (!Number.isInteger(interval_sec) || interval_sec <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'interval_sec must be a positive integer'
+            });
+        }
+
+        if (!Number.isInteger(timeout_ms) || timeout_ms <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'timeout_ms must be a positive integer'
+            });
+        }
+
+        if (typeof is_active !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                message: 'is_active must be a boolean'
+            });
+        }
+
         const result = await pool.query(
             `INSERT INTO monitored_endpoints
-            (name, url, interval_seconds, timeout_ms, is_active)
-            VALUES ($1, $2, $3, $4, $5)
+            (name, url, method, interval_seconds, timeout_ms, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *`,
-            [name, url, interval_sec, timeout_ms, is_active]
+            [name.trim(), url, normalizedMethod, interval_sec, timeout_ms, is_active]
         );
 
         return res.status(201).json({
@@ -58,15 +119,15 @@ export const getApiById = async(req, res, next)=>{
     try {
         const {id}= req.params;
 
-        if(!/^[1-9]\d*$/.test(id)){
+        if(!UUID_REGEX.test(id)){
             return res.status(400).json({
                 success:false,
-                message:'Invalis API ID'
+                message:'Invalid API ID'
             })
         }
 
         const result = await pool.query(
-            'select * from monitored_endpoints where id =$',[id]
+            'select * from monitored_endpoints where id = $1',[id]
         );
 
         if(result.rows.length==0){
@@ -91,12 +152,13 @@ export const updateApi = async (req, res, next) => {
         const {
             name,
             url,
+            method,
             interval_sec,
             timeout_ms,
             is_active
         } = req.body;
 
-        if (!/^[1-9]\d*$/.test(id)) {
+        if (!UUID_REGEX.test(id)) {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid API ID'
@@ -107,6 +169,7 @@ export const updateApi = async (req, res, next) => {
         const fields = {
             name,
             url,
+            method,
             interval_sec,
             timeout_ms,
             is_active
@@ -134,26 +197,20 @@ export const updateApi = async (req, res, next) => {
                 });
             }
 
-            if (key === 'url') {
-                if (typeof value !== 'string') {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'URL must be a string'
-                    });
-                }
+            if (key === 'url' && !isValidHttpUrl(value)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'A valid HTTP or HTTPS URL is required'
+                });
+            }
 
-                try {
-                    const parsedUrl = new URL(value);
-
-                    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-                        throw new Error('Invalid protocol');
-                    }
-                } catch {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'A valid HTTP or HTTPS URL is required'
-                    });
-                }
+            if (key === 'method' &&
+                (typeof value !== 'string' ||
+                 !ALLOWED_METHODS.includes(value.toUpperCase()))) {
+                return res.status(400).json({
+                    success: false,
+                    message: `method must be one of: ${ALLOWED_METHODS.join(', ')}`
+                });
             }
 
             if (
@@ -174,14 +231,28 @@ export const updateApi = async (req, res, next) => {
             }
         }
 
-        const values = updates.map(([key, value]) =>
-            key === 'name' ? value.trim() : value
-        );
+        const values = updates.map(([key, value]) => {
+            if (key === 'name') return value.trim();
+            if (key === 'method') return value.toUpperCase();
+            return value;
+        });
 
-        // Build SQL using only the allowlisted column names
-        const setClause = updates
-            .map(([key], index) => `${key} = $${index + 1}`)
-            .join(', ');
+        // Map API field names to real column names (allowlist)
+        const COLUMN_MAP = {
+            name: 'name',
+            url: 'url',
+            method: 'method',
+            interval_sec: 'interval_seconds',
+            timeout_ms: 'timeout_ms',
+            is_active: 'is_active'
+        };
+
+        const setClause = [
+            ...updates.map(
+                ([key], index) => `${COLUMN_MAP[key]} = $${index + 1}`
+            ),
+            'updated_at = NOW()'
+        ].join(', ');
 
         values.push(id);
 
@@ -218,10 +289,7 @@ export const deleteApi = async (req, res, next) => {
         const { id } = req.params;
 
         // Validate UUID format
-        const uuidRegex =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-        if (!uuidRegex.test(id)) {
+        if (!UUID_REGEX.test(id)) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid API ID"

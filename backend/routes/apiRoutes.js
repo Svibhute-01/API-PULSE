@@ -13,6 +13,7 @@ import {
     getCheckHistory,
     getApiStats
 } from "../controller/monitorController.js";
+import { manualCheckLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.get('/', getAllApis);
 
 router.put('/:id', updateApi);
 router.delete('/:id', deleteApi);
-router.post('/:id/check', runManualCheck);
+router.post('/:id/check', manualCheckLimiter,runManualCheck);
 router.get('/:id/history', getCheckHistory);
 router.get("/:id/stats", getApiStats);
 router.get('/:id', getApiById);
